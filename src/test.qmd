@@ -24,11 +24,10 @@ import xgboost as xgb
 import warnings
 warnings.filterwarnings('ignore')
 
-# データの読み込み
-file_path = '/Users/snakashima/develop/aiTaskForce/aI-task-force-attrition-prediction/src/data/processed/train/学習データ_label_conversion_3_過学習False.csv'
+
+file_path = './data/processed/train/学習データ_label_conversion_3_過学習False.csv'
 df = pd.read_csv(file_path)
 
-# データの基本情報を確認
 print(f"データサイズ: {df.shape}")
 df.head()
 ```
@@ -38,7 +37,6 @@ df.head()
 ```{python}
 # カラム情報の確認
 print("列数:", len(df.columns))
-print("\n最初の10列:", df.columns[:10].tolist())
 
 # ターゲット変数の確認（this might need adjustment based on your actual target column name）
 target_col = [col for col in df.columns if 'voluntary' in col.lower() or 'turnover' in col.lower() or 'label' in col.lower()]
@@ -62,49 +60,22 @@ print(df.dtypes.value_counts())
 
 ## 2. 必要最小限の前処理
 
-### A. 欠損値処理
-```{python}
-# 心理測定データは欠損が少ないはずですが
-print("欠損値の確認:")
-null_counts = df.isnull().sum()
-print(null_counts[null_counts > 0])
-
-# 全体の欠損率
-total_nulls = df.isnull().sum().sum()
-total_values = df.shape[0] * df.shape[1]
-print(f"\n全体の欠損率: {100 * total_nulls / total_values:.2f}%")
-
-# 欠損があれば中央値補完（平均値ではなく）
-from sklearn.impute import SimpleImputer
-imputer = SimpleImputer(strategy='median')
-
-# ターゲット変数とそれ以外を分割
-y = df[target_col]
-X = df.drop(columns=[target_col])
-
-# 欠損値がある場合のみ補完
-if X.isnull().values.any():
-    X = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
-    print("\n欠損値を中央値で補完しました")
-    print("補完後の欠損値数:", X.isnull().sum().sum())
-```
-
 ### B. 標準化
 ```{python}
-# EQ、コンピテンシー、ストレススコアは尺度が異なる可能性
-from sklearn.preprocessing import StandardScaler
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+# # EQ、コンピテンシー、ストレススコアは尺度が異なる可能性
+# from sklearn.preprocessing import StandardScaler
+# scaler = StandardScaler()
+# X_scaled = scaler.fit_transform(X)
 
-# 標準化前後の比較を確認
-X_scaled_df = pd.DataFrame(X_scaled, columns=X.columns)
-comparison = pd.DataFrame({
-    '標準化前_平均': X.mean(),
-    '標準化前_標準偏差': X.std(),
-    '標準化後_平均': X_scaled_df.mean(),
-    '標準化後_標準偏差': X_scaled_df.std()
-})
-comparison.head()
+# # 標準化前後の比較を確認
+# X_scaled_df = pd.DataFrame(X_scaled, columns=X.columns)
+# comparison = pd.DataFrame({
+#     '標準化前_平均': X.mean(),
+#     '標準化前_標準偏差': X.std(),
+#     '標準化後_平均': X_scaled_df.mean(),
+#     '標準化後_標準偏差': X_scaled_df.std()
+# })
+# comparison.head()
 ```
 
 ### C. 特徴量選択（重要）
