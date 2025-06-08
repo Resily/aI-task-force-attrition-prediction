@@ -1,0 +1,45 @@
+# Exploratory Data Analysis（EDA）
+- pycaret結果の重要な特徴量top5を用いて、生データのEDAを行う。
+
+## メモ
+- ARMをやめた人が、どういう傾向だったか。
+- 採用している人が、どういう傾向だったか。
+- やめた人のpdCaなどと関連付できないのか。
+- 一番重要度高いやつと退職の比較。
+- メトリクスもわかりやすい図でだしたい
+
+## 生データのEDA
+
+```{python}
+print("test")
+```
+
+```{python}
+import pandas as pd
+import seaborn as sns
+import matplotlib
+matplotlib.use('Agg')  # TkAgg から Agg に変更（Docker環境用）
+import matplotlib.pyplot as plt
+
+# フォント設定を追加（Docker環境で利用可能なフォントに変更）
+plt.rcParams['font.family'] = 'Noto Sans CJK JP'  # DockerfileでインストールされているNoto Sans CJK JPを使用
+plt.rcParams['axes.unicode_minus'] = False
+```
+
+```{python}
+df = pd.read_csv("../data/processed/train/学習データ_label_conversion_3_過学習False.csv")
+print(df.shape)
+```
+
+# top5の特徴量を用いて、生データのEDAを行う。
+- 性別
+- 潜在的なストレス耐性_ストレスを強める特性(リスクパターン)_E15_秩序志向_スコア
+- 潜在的なストレス耐性_ストレスを強める特性(リスクパターン)_E12_業績偏重_スコア
+- EQ能力_C03_感情の理解_スコア
+- 潜在的なストレス耐性_ストレス対処法(コーピング)_E24_否認_スコア
+- 
+```{python}
+sns.pairplot(df, hue='label',
+             vars=['性別', '潜在的なストレス耐性_ストレスを強める特性(リスクパターン)_E15_秩序志向_スコア', '潜在的なストレス耐性_ストレスを強める特性(リスクパターン)_E12_業績偏重_スコア'])
+plt.savefig('seaborn_pairplot.png')
+```

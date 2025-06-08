@@ -1,0 +1,132 @@
+---
+editor: source
+date: "`r format(Sys.time(), '%Y/%m/%d')`"
+toc: true
+number-sections: true
+format: 
+  html:
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+jupyter: python3
+---
+
+# 概要
+-   インサイトデータを加工し、学習データとして使えるようにする。
+# ライブラリのインポート
+```{python}
+import pandas as pd
+
+from insight_process import preprocessing
+
+from sklearn.model_selection import train_test_split
+from sklearn.utils import resample
+
+from imblearn.over_sampling import SMOTE
+```
+
+# データ加工
+## 不要な空行の削除
+
+```{python}
+# df_insightData = pd.read_excel('../data/raw/インサイト検査結果_メンタル不調歴の有無_役職_PA評価一覧_離職時期のみ_250214.xlsx',header=[0, 1, 2, 3, 4, 5])
+
+df_insightData = pd.read_excel('../data/raw/insight-train.xlsx',header=[0, 1, 2, 3, 4, 5])
+
+# 複数行のヘッダーを結合（"Unnamed" を含む部分を除外）
+df_insightData.columns = [
+    '_'.join(
+        filter(lambda x: x and "Unnamed" not in str(x), map(str, col))
+    ).replace('\n', '').strip()  # 改行を削除
+    for col in df_insightData.columns.values
+]
+print(df_insightData.columns.tolist())
+print(df_insightData.shape)
+```
+
+## カラム名を変更
+```{python}
+df_insightData = df_insightData.rename(columns={"入社年月日": "入社時期"})
+
+
+df_insightData = df_insightData.rename(columns={"年齢_メンタル不調による休職時期_or_離職時期": "離職時期"})
+
+print(df_insightData.columns.tolist())
+```
+
+## 2年以内か3年以内か
+```{python}
+# conversion_method = "label_conversion_2"
+conversion_method = "label_conversion_3"
+```
+
+## 自前関数を用いて加工
+```{python}
+df_processed = preprocessing(df=df_insightData, conversion_method=conversion_method)
+# labelの分布の確認
+print(df_processed['label'].value_counts())
+print(df_processed.shape)
+```
+
+## （任意）テストデータを作成
+- 過学習を確認するためにダウンサンプリングやsmoteする前に、テストデータを作成。
+```{python}
+# 過学習対策データか否か
+isCountermeasuresOverfitting = False
+
+# データの分割(学習データ、テストデータ)
+if isCountermeasuresOverfitting:
+  df_processed, test_data = train_test_split(smoted_data, test_size=0.2,random_state=10)
+  output_path = f'../data/processed/過学習確認用テストデータ_{conversion_method}.csv'
+  test_data.to_csv(output_path, index=False)
+```
+
+## 基本
+### csv出力
+```{python}
+output_path = f'../data/processed/学習データ_{conversion_method}_過学習{isCountermeasuresOverfitting}.csv'
+df_processed.to_csv(output_path, index=False)
+```
+
+## ダウンサンプリングによるデータ加工
+```{python}
+class_counts = df_processed['label'].value_counts()
+min_class_count = class_counts.min()
+
+# 各クラスをダウンサンプリング
+df_downsampled = pd.concat([
+    resample(df_processed[df_processed['label'] == label], 
+             replace=False, 
+             n_samples=min_class_count, 
+             random_state=42)
+    for label in class_counts.index
+])
+
+print(df_downsampled['label'].value_counts())
+
+```
+
+### csv出力
+```{python}
+output_path = f'../data/processed/学習データ_ダウンサンプリング_{conversion_method}_過学習{isCountermeasuresOverfitting}.csv'
+df_downsampled.to_csv(output_path, index=False)
+```
+
+## smoteデータ加工
+```{python}
+X = df_processed.drop('label', axis=1)
+y = df_processed['label']
+
+smote = SMOTE(random_state=42)
+X_smoted_data, y_smoted_data = smote.fit_resample(X, y)
+
+smoted_data = pd.DataFrame(X_smoted_data, columns=X_smoted_data.columns)
+smoted_data['label'] = y_smoted_data
+print(smoted_data['label'].value_counts())
+```
+
+### csv出力
+```{python}
+output_path = f'../data/processed/学習データ_smoteオーバサンプリング_{conversion_method}_過学習{isCountermeasuresOverfitting}.csv'
+smoted_data.to_csv(output_path, index=False)
+```

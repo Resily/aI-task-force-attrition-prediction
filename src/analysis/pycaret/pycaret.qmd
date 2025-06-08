@@ -1,0 +1,220 @@
+# Pycaretによる比較
+
+## インポートとデータの読み込み
+```{python}
+from pycaret.classification import *
+import seaborn as sns
+import pandas as pd
+import matplotlib.pyplot as plt
+
+df = pd.read_csv("../../data/processed/train/学習データ_smoteオーバサンプリング_label_conversion_3_過学習False.csv")
+```
+
+## データの概要を確認
+
+```{python}
+df.head()
+```
+
+## データの基本情報
+
+```{python}
+df.info()
+```
+
+## 統計情報
+
+```{python}
+df.describe()
+```
+
+## ターゲット変数の分布を確認
+
+```{python}
+plt.figure(figsize=(8, 5))
+sns.countplot(x='label', data=df)
+plt.title('ターゲット変数の分布')
+plt.savefig('plots/target_distribution.png')  # 図を保存
+plt.show()
+```
+
+```{python}
+setup_clf = setup(data=df, target="label", session_id=123)
+```
+
+## 全てのモデルを比較
+
+```{python}
+best_models = compare_models(n_select=5)
+```
+
+## 混同行列の可視化（最良モデル）
+```{python}
+plot_model(best_models[0], plot='confusion_matrix', save=True)
+```
+
+## ROC曲線の可視化
+
+```{python}
+plot_model(best_models[0], plot='auc')
+```
+
+## 特徴量の重要度
+```{python}
+# import matplotlib.font_manager as fm
+import matplotlib_fontja
+plt.rcParams['font.family'] = 'IPAexGothic'
+plt.rcParams['axes.unicode_minus'] = False  # マイナス記号を正しく表示
+
+# 特徴量の重要度を可視化して保存
+feature_plot = plot_model(best_models[0], plot='feature', save=True)
+
+# 特徴量の重要度情報を取得
+feature_importance = pd.DataFrame(get_config('X').columns.tolist(), columns=['Feature'])
+feature_importance['Importance'] = best_models[0].feature_importances_
+feature_importance = feature_importance.sort_values(by='Importance', ascending=False)
+print("特徴量の重要度ランキング:")
+display(feature_importance.head(10))
+
+# 上位5つの特徴量を取得
+top5_features = feature_importance.head(5)['Feature'].tolist()
+print("トップ5の特徴量:", top5_features)
+
+# トップ5特徴量のデータセットを作成
+top5_df = df[top5_features + ['label']]
+```
+
+## トップ5特徴量の探索的データ分析
+
+```{python}
+import os
+# プロット保存用ディレクトリの作成
+os.makedirs('plots', exist_ok=True)
+
+# 1. 各特徴量の分布（ヒストグラム）
+plt.figure(figsize=(15, 10))
+for i, feature in enumerate(top5_features):
+    plt.subplot(2, 3, i+1)
+    sns.histplot(data=df, x=feature, hue='label', kde=True, bins=20)
+    plt.title(f'{feature}の分布')
+plt.tight_layout()
+plt.savefig('plots/top5_features_histogram.png')
+plt.show()
+```
+
+```{python}
+# 2. 箱ひげ図
+plt.figure(figsize=(15, 10))
+for i, feature in enumerate(top5_features):
+    plt.subplot(2, 3, i+1)
+    sns.boxplot(data=df, x='label', y=feature)
+    plt.title(f'{feature}の箱ひげ図（ラベル別）')
+plt.tight_layout()
+plt.savefig('plots/top5_features_boxplot.png')
+plt.show()
+```
+
+```{python}
+# 3. バイオリンプロット
+plt.figure(figsize=(15, 10))
+for i, feature in enumerate(top5_features):
+    plt.subplot(2, 3, i+1)
+    sns.violinplot(data=df, x='label', y=feature)
+    plt.title(f'{feature}のバイオリンプロット（ラベル別）')
+plt.tight_layout()
+plt.savefig('plots/top5_features_violinplot.png')
+plt.show()
+```
+
+```{python}
+# 4. 特徴量間の相関関係（相関ヒートマップ）
+plt.figure(figsize=(10, 8))
+correlation_matrix = top5_df.corr()
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt='.2f')
+plt.title('特徴量間の相関関係')
+plt.savefig('plots/top5_features_correlation.png')
+plt.show()
+```
+
+```{python}
+# 5. 散布図行列（ペアプロット）
+sns.pairplot(top5_df, hue='label', diag_kind='kde')
+plt.savefig('plots/top5_features_pairplot.png')
+plt.show()
+```
+
+```{python}
+# 6. 各特徴量のKDE（カーネル密度推定）プロット
+plt.figure(figsize=(15, 10))
+for i, feature in enumerate(top5_features):
+    plt.subplot(2, 3, i+1)
+    sns.kdeplot(data=df, x=feature, hue='label', fill=True, common_norm=False, alpha=0.5)
+    plt.title(f'{feature}のKDEプロット')
+plt.tight_layout()
+plt.savefig('plots/top5_features_kde.png')
+plt.show()
+```
+
+```{python}
+# 7. 各特徴量の値とターゲット変数の関係（ポイントプロット）
+plt.figure(figsize=(15, 10))
+for i, feature in enumerate(top5_features):
+    plt.subplot(2, 3, i+1)
+    # 特徴量を5~10の等幅ビンに分割
+    df[f'{feature}_bin'] = pd.qcut(df[feature], q=min(10, df[feature].nunique()), duplicates='drop')
+    sns.pointplot(data=df, x=f'{feature}_bin', y='label')
+    plt.xticks(rotation=90)
+    plt.title(f'{feature}の値とラベルの関係')
+plt.tight_layout()
+plt.savefig('plots/top5_features_pointplot.png')
+plt.show()
+```
+
+```{python}
+# 8. 2次元のヒートマップ（上位2特徴量）
+if len(top5_features) >= 2:
+    plt.figure(figsize=(10, 8))
+    # 上位2つの特徴量を使用
+    feature1, feature2 = top5_features[0], top5_features[1]
+    
+    # 特徴量を10の等幅ビンに分割
+    df[f'{feature1}_bin'] = pd.qcut(df[feature1], 10, duplicates='drop')
+    df[f'{feature2}_bin'] = pd.qcut(df[feature2], 10, duplicates='drop')
+    
+    # ピボットテーブルを作成してヒートマップ表示
+    pivot = pd.pivot_table(data=df, values='label', 
+                          index=f'{feature2}_bin', 
+                          columns=f'{feature1}_bin', 
+                          aggfunc='mean')
+    
+    sns.heatmap(pivot, cmap='YlGnBu', annot=True, fmt='.2f')
+    plt.title(f'{feature1}と{feature2}の関係とラベル平均値')
+    plt.xlabel(feature1)
+    plt.ylabel(feature2)
+    plt.savefig('plots/top2_features_heatmap.png')
+    plt.show()
+```
+
+```{python}
+# 9. スウォームプロット
+plt.figure(figsize=(15, 10))
+for i, feature in enumerate(top5_features):
+    plt.subplot(2, 3, i+1)
+    sns.swarmplot(data=df, x='label', y=feature)
+    plt.title(f'{feature}のスウォームプロット')
+plt.tight_layout()
+plt.savefig('plots/top5_features_swarmplot.png')
+plt.show()
+```
+
+```{python}
+# 10. 特徴量の分布の比較（ラベル別）
+for feature in top5_features:
+    plt.figure(figsize=(10, 6))
+    # サブグループごとのヒストグラム比較
+    g = sns.FacetGrid(df, col='label', height=5, aspect=0.8)
+    g.map(sns.histplot, feature, kde=True)
+    g.fig.suptitle(f'ラベル別の{feature}分布', y=1.05)
+    plt.savefig(f'plots/{feature}_label_distribution.png')
+    plt.show()
+```

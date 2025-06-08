@@ -1,0 +1,29 @@
+{
+  "name": "Turnover Prediction Environment",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "randomforest",
+  "workspaceFolder": "/app",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+
+        "ms-toolsai.jupyter",
+        "ms-toolsai.jupyter-keymap",
+        "ms-toolsai.jupyter-renderers",
+
+        "quarto.quarto"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "jupyter.kernels.filter": [
+          {
+            "path": "/usr/local/share/jupyter/kernels/turnover-prediction/kernel.json",
+            "type": "jupyterKernel"
+          }
+        ]
+      }
+    }
+  }
+}

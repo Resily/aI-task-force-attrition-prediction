@@ -1,0 +1,43 @@
+学習データのシェイプ: (268, 40)
+Test Accuracy: 0.6695652173913044
+Test AUC: 0.7512254901960784
+Test F1 Score: 0.6666666666666666
+Test LogLoss: 0.6057407975769675
+Confusion Matrix:
+[[39 25]
+ [13 38]]
+
+[過学習確認]Test Accuracy: 0.6909090909090909
+[過学習確認]Test AUC: 0.8046497584541061
+[過学習確認]Test F1 Score: 0.6909090909090909
+[過学習確認]Test LogLoss: 0.5801653863247828
+[過学習確認]Confusion Matrix:
+[[57 39]
+ [12 57]]
+
+学習データのシェイプ: (268, 40)
+Test Accuracy: 0.6869565217391305
+Test AUC: 0.7852328431372549
+Test F1 Score: 0.6949152542372882
+Test LogLoss: 0.586252131691319
+Confusion Matrix:
+[[38 26]
+ [10 41]]
+
+[過学習確認]Test Accuracy: 0.7515151515151515
+[過学習確認]Test AUC: 0.8506944444444444
+[過学習確認]Test F1 Score: 0.7354838709677419
+[過学習確認]Test LogLoss: 0.54419093964866
+[過学習確認]Confusion Matrix:
+[[67 29]
+ [12 57]]
+
+学習データのシェイプ: (536, 40)
+Test Accuracy: 0.808695652173913
+Test AUC: 0.874782608695652
+Test F1 Score: 0.8103448275862069
+Test LogLoss: 0.4888490515816915
+Confusion Matrix:
+[[92 23]
+ [21 94]]
+

@@ -1,0 +1,97 @@
+---
+editor: source
+date: "`r format(Sys.time(), '%Y/%m/%d')`"
+toc: true
+number-sections: true
+format: 
+  html:
+    embed-resources: true
+editor_options: 
+  chunk_output_type: console
+jupyter: python3
+---
+
+# 概要
+-   予測データを加工し、学習データのカラムと一致させる。
+
+# ライブラリのインポート
+
+```{python}
+import pycaret
+```
+
+```{python}
+import pandas as pd
+from datetime import datetime
+import re
+```
+
+# データ加工
+## 不要な空行の削除
+```{python}
+# ファイルパス
+file_path = '../data/raw/predict/個人情報削除_0310-0316処理分_結果一覧表_株式会社アドバンテッジリスクマネジメント_70023-20250318-164706485.xlsx'
+
+# データの読み込み
+df_predictData = pd.read_excel(file_path, header=[0, 1, 2, 3, 4])
+
+# ファイル名から情報を抽出
+match = re.search(r'(\d{5}-\d{8}-\d{9})', file_path)
+if match:
+    extracted_part = match.group(1)
+    print(f"抽出された部分: {extracted_part}")
+else:
+    print("一致する部分が見つかりませんでした")
+
+# 複数行のヘッダーを結合（"Unnamed" を含む部分を除外）
+df_predictData.columns = [
+    '_'.join(
+        filter(lambda x: x and "Unnamed" not in str(x), map(str, col))
+    ).replace('\n', '').strip()  # 改行を削除
+    for col in df_predictData.columns.values
+]
+
+print(df_predictData.columns.tolist())
+```
+
+## 不要な列名の削除
+- 　出力というワードで消すとコンピテンシー_D02_ビジョン創出力_スコアの「（創）出力」部分が該当してしまう。
+```{python}
+# 不要なカラムを削除
+unwanted_columns = ["受検者種別", '企業コード', '取込み処理ID', '取込み順', '問題冊子番号','氏名_姓', '氏名_名', '生年月日']
+df_predictData = df_predictData.drop(columns=unwanted_columns, errors='ignore')
+
+# 特定のパターンに一致する列を削除
+patterns = ['役職_', 'パフォーマンス評価_', '_段階', '_順位', '_矢印', '_未回答', '総合評価_', '応答態度_', '検査セクション']
+df_predictData = df_predictData.drop(columns=df_predictData.filter(regex='|'.join(patterns)).columns, errors='ignore')
+
+# 性別欠損値の変換
+df_predictData['性別'].fillna('不明', inplace=True)
+df_predictData['性別'] = df_predictData['性別'].replace({'男性': 0, '女性': 1, '不明': 2})
+
+# 特定のカラムを削除
+df_predictData = df_predictData.drop(columns=['出力', 'No.'], errors='ignore')
+
+
+df_predictData = df_predictData.rename(columns={"年代": "年齢"})
+
+# カラム数を表示
+df_predictData.columns, len(df_predictData.columns)
+```
+
+# 学習データとのカラムの差分を確認
+- labelだけならOK
+```{python}
+df = pd.read_csv('../data/processed/train/学習データ_label_conversion_3_過学習False.csv')
+diff = set(df.columns.to_list()) - set(df_predictData.columns.to_list())
+print("差分：", diff)
+label_counts = df['label'].value_counts(normalize=True)
+print(label_counts)
+```
+
+# 予測データをcsv出力
+```{python}
+print(df_predictData.columns)
+output_path = f'../data/processed/predict/processed_predict_data_{extracted_part}.csv'
+df_predictData.to_csv(output_path, index=False)
+```

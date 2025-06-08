@@ -1,0 +1,8 @@
+Test Accuracy: 0.6234567901234568
+Test AUC: 0.5683329229253878
+Test F1 Score: 0.2823529411764706
+Test LogLoss: 0.6503593446172485
+Confusion Matrix:
+[[89 42]
+ [19 12]]
+

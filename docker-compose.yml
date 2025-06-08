@@ -1,0 +1,10 @@
+version: "3"
+
+services:
+  randomforest:
+    container_name: arm-ai-taskforce-turnover-prediction
+    build: .
+    ports:
+      - "8888:8888"
+    volumes:
+      - .:/app
