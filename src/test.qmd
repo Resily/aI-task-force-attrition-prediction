@@ -1,0 +1,298 @@
+---
+title: "緊急対応"
+format: html
+execute:
+  echo: true
+  warning: false
+---
+
+```{python}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
+from sklearn.feature_selection import SelectFromModel
+from sklearn.linear_model import LassoCV
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.ensemble import VotingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import PolynomialFeatures
+import lightgbm as lgb
+import xgboost as xgb
+import warnings
+warnings.filterwarnings('ignore')
+
+# データの読み込み
+file_path = '/Users/snakashima/develop/aiTaskForce/aI-task-force-attrition-prediction/src/data/processed/train/学習データ_label_conversion_3_過学習False.csv'
+df = pd.read_csv(file_path)
+
+# データの基本情報を確認
+print(f"データサイズ: {df.shape}")
+df.head()
+```
+
+## 1. データの基本理解
+
+```{python}
+# カラム情報の確認
+print("列数:", len(df.columns))
+print("\n最初の10列:", df.columns[:10].tolist())
+
+# ターゲット変数の確認（this might need adjustment based on your actual target column name）
+target_col = [col for col in df.columns if 'voluntary' in col.lower() or 'turnover' in col.lower() or 'label' in col.lower()]
+if target_col:
+    print(f"\nターゲット変数候補: {target_col}")
+    # 最初の候補をターゲット変数として使用
+    target_col = target_col[0]
+    print(f"使用するターゲット変数: {target_col}")
+    print("クラス分布:")
+    print(df[target_col].value_counts())
+    print("クラス割合:")
+    print(df[target_col].value_counts(normalize=True))
+else:
+    print("\nターゲット変数が見つかりません。適切な列名を指定してください")
+    target_col = "is_voluntary_turnover"  # 仮のターゲット列名
+
+# データ型の確認
+print("\nデータ型の概要:")
+print(df.dtypes.value_counts())
+```
+
+## 2. 必要最小限の前処理
+
+### A. 欠損値処理
+```{python}
+# 心理測定データは欠損が少ないはずですが
+print("欠損値の確認:")
+null_counts = df.isnull().sum()
+print(null_counts[null_counts > 0])
+
+# 全体の欠損率
+total_nulls = df.isnull().sum().sum()
+total_values = df.shape[0] * df.shape[1]
+print(f"\n全体の欠損率: {100 * total_nulls / total_values:.2f}%")
+
+# 欠損があれば中央値補完（平均値ではなく）
+from sklearn.impute import SimpleImputer
+imputer = SimpleImputer(strategy='median')
+
+# ターゲット変数とそれ以外を分割
+y = df[target_col]
+X = df.drop(columns=[target_col])
+
+# 欠損値がある場合のみ補完
+if X.isnull().values.any():
+    X = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
+    print("\n欠損値を中央値で補完しました")
+    print("補完後の欠損値数:", X.isnull().sum().sum())
+```
+
+### B. 標準化
+```{python}
+# EQ、コンピテンシー、ストレススコアは尺度が異なる可能性
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# 標準化前後の比較を確認
+X_scaled_df = pd.DataFrame(X_scaled, columns=X.columns)
+comparison = pd.DataFrame({
+    '標準化前_平均': X.mean(),
+    '標準化前_標準偏差': X.std(),
+    '標準化後_平均': X_scaled_df.mean(),
+    '標準化後_標準偏差': X_scaled_df.std()
+})
+comparison.head()
+```
+
+### C. 特徴量選択（重要）
+```{python}
+# 40特徴量は537行に対して多すぎる
+# 過学習リスクが高い
+
+# 相関が高い特徴量を除去
+correlation_matrix = df.corr()
+high_corr = np.where(np.abs(correlation_matrix) > 0.9)
+high_corr_pairs = [(correlation_matrix.columns[x], correlation_matrix.columns[y]) 
+                   for x, y in zip(*high_corr) if x != y]
+print("高相関ペア（>0.9）:")
+for pair in high_corr_pairs[:10]:  # 最初の10ペアのみ表示
+    print(f"{pair[0]} - {pair[1]}: {correlation_matrix.loc[pair[0], pair[1]]:.3f}")
+
+# もしくはLasso回帰で自動選択
+from sklearn.feature_selection import SelectFromModel
+from sklearn.linear_model import LassoCV
+
+selector = SelectFromModel(LassoCV(cv=5, random_state=42))
+X_selected = selector.fit_transform(X_scaled, y)
+
+# 選択された特徴量の確認
+selected_features = X.columns[selector.get_support()]
+print(f"\n選択された特徴量: {len(selected_features)}/{len(X.columns)}")
+print(selected_features.tolist())
+```
+
+## 3. 小データセット専用の手法
+
+### A. クロスバリデーション強化
+```{python}
+# 5-fold → 10-fold に変更
+from sklearn.model_selection import StratifiedKFold
+cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+print(f"交差検証: {cv.n_splits}分割StratifiedKFold")
+```
+
+### B. アンサンブル学習
+```{python}
+# 単一モデルでは不安定
+# 軽量なモデルを複数組み合わせ
+from sklearn.ensemble import VotingClassifier
+
+# LightGBMのラッパー関数
+class LightGBMClassifier(lgb.LGBMClassifier):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+    def predict_proba(self, X):
+        # VotingClassifierと互換性を持たせるためのメソッド
+        return super().predict_proba(X)
+
+models = [
+    ('lgb', LightGBMClassifier(num_leaves=10)),  # 軽量設定
+    ('xgb', xgb.XGBClassifier(max_depth=3)),
+    ('lr', LogisticRegression(C=0.1))
+]
+
+ensemble = VotingClassifier(models, voting='soft')
+print("アンサンブルモデル構成:")
+for name, model in models:
+    print(f"- {name}: {type(model).__name__}")
+```
+
+## 4. 心理測定データ特有の処理
+
+### A. ドメイン知識活用
+```{python}
+# EQ総合スコアを作成
+eq_cols = [col for col in X.columns if 'EQ能力_C0' in col and 'スコア' in col]
+
+if len(eq_cols) >= 4:
+    print("EQ関連のカラム:", eq_cols)
+    df['EQ_total'] = df[eq_cols].mean(axis=1)
+    print("EQ総合スコアを作成しました")
+    print(f"EQ総合スコア平均: {df['EQ_total'].mean():.2f}, 標準偏差: {df['EQ_total'].std():.2f}")
+
+# ストレスリスク総合スコア
+stress_risk_cols = [col for col in df.columns if 'リスクパターン' in col]
+
+if len(stress_risk_cols) > 0:
+    print("\nストレスリスク関連カラム:", stress_risk_cols)
+    df['stress_risk_total'] = df[stress_risk_cols].mean(axis=1)
+    print("ストレスリスク総合スコアを作成しました")
+    print(f"ストレスリスク総合スコア平均: {df['stress_risk_total'].mean():.2f}, 標準偏差: {df['stress_risk_total'].std():.2f}")
+```
+
+### B. 非線形関係の捕捉
+```{python}
+# 心理指標は相互作用が重要
+from sklearn.preprocessing import PolynomialFeatures
+
+# 2次交互作用項（少しだけ）
+poly = PolynomialFeatures(degree=2, interaction_only=True, include_bias=False)
+
+# 計算量が多すぎるので、選択された特徴量のみで交互作用を生成
+X_selected_df = pd.DataFrame(X_scaled[:, selector.get_support()], columns=selected_features)
+
+# 特徴量が多すぎる場合は上位5つだけで交互作用を計算
+if len(X_selected_df.columns) > 5:
+    print(f"特徴量が{len(X_selected_df.columns)}個あるため、上位5つのみで交互作用を計算します")
+    X_top5 = X_selected_df.iloc[:, :5]
+    X_poly = poly.fit_transform(X_top5)
+    poly_feature_names = poly.get_feature_names_out(X_top5.columns)
+else:
+    X_poly = poly.fit_transform(X_selected_df)
+    poly_feature_names = poly.get_feature_names_out(X_selected_df.columns)
+
+print(f"交互作用生成後の特徴量数: {len(poly_feature_names)}")
+print("最初の10個の交互作用特徴量:")
+print(poly_feature_names[:10])
+
+# ただし特徴量爆発に注意
+print(f"\n注意: 交互作用項を含めると元の{len(X_selected_df.columns)}個の特徴量から{len(poly_feature_names)}個に増加します")
+print("モデルの複雑さと過学習のバランスに注意が必要です")
+```
+
+## 5. 最終推奨戦略
+
+```{python}
+# 1. 基本前処理のみ
+X_processed = StandardScaler().fit_transform(X)
+
+# 2. 特徴量選択で次元削減
+X_selected = SelectFromModel(LassoCV()).fit_transform(X_processed, y)
+
+# 3. class_weight調整
+lgb_model = LightGBMClassifier(
+    class_weight='balanced',
+    num_leaves=10,  # 軽量設定
+    max_depth=3,
+    random_state=42
+)
+
+# 4. 10-fold CV
+scores = cross_val_score(lgb_model, X_selected, y, 
+                        cv=StratifiedKFold(10), 
+                        scoring='average_precision')  # PR-AUC
+
+print(f"平均PR-AUCスコア: {scores.mean():.4f}, 標準偏差: {scores.std():.4f}")
+```
+
+## 6. 個別実装例：EQ総合スコアとストレスリスク
+
+```{python}
+# EQ総合スコアを作成（シンプル実装）
+df['EQ_total'] = (df['EQ能力_C01_感情の識別_スコア'] + 
+                  df['EQ能力_C02_感情の利用_スコア'] + 
+                  df['EQ能力_C03_感情の理解_スコア'] + 
+                  df['EQ能力_C04_感情の調整_スコア']) / 4
+
+# ストレスリスク総合スコア（シンプル実装）
+stress_risk_cols = [col for col in df.columns if 'リスクパターン' in col]
+df['stress_risk_total'] = df[stress_risk_cols].mean(axis=1)
+```
+
+## 7. 加工済みデータの保存
+
+```{python}
+# 加工済みデータを保存する
+processed_file_path = '/Users/snakashima/develop/aiTaskForce/aI-task-force-attrition-prediction/src/data/processed/train/学習データ_label_conversion_3_前処理済み.csv'
+
+# 重要な特徴量とターゲットのみ保存
+df_processed = pd.DataFrame(X_selected, columns=selected_features)
+df_processed[target_col] = y.values
+
+print(f"前処理済みデータ（特徴量選択後）のサイズ: {df_processed.shape}")
+print(f"保存パス: {processed_file_path}")
+
+# 実際に保存する場合はコメントを外す
+# df_processed.to_csv(processed_file_path, index=False)
+```
+
+## 8. 結果の可視化
+
+```{python}
+# 選択された特徴量の重要度可視化
+if hasattr(selector.estimator_, 'coef_'):
+    feature_importance = pd.DataFrame({
+        '特徴量': selected_features,
+        '重要度': np.abs(selector.estimator_.coef_)
+    }).sort_values(by='重要度', ascending=False)
+    
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x='重要度', y='特徴量', data=feature_importance.head(15))
+    plt.title('Lasso回帰による特徴量重要度（上位15）')
+    plt.tight_layout()
+    plt.show()
+```
